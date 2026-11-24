@@ -1,0 +1,19 @@
+{
+  "name": "pt-ade-pasir-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Backend telematika dan anti-fraud armada PT Ade Pasir",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "mqtt": "^5.0.0",
+    "pg": "^8.23.1",
+    "ws": "^8.0.0"
+  }
+}

@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dashboard Armada PT Ade Pasir</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">AP</div>
+          <div>
+            <p class="brand-sub">Pusat kendali telematika</p>
+            <h1>PT Ade Pasir Berjuan Sakti<span class="brand-divider"></span></h1>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <div class="trip-chip">
+            <span class="label">Perjalanan</span>
+            <strong>TRP-20261120-001</strong>
+          </div>
+          <div class="connection" id="connectionBadge" data-state="offline">
+            <span class="connection-dot" aria-hidden="true"></span>
+            <span id="connectionText">Terputus</span>
+          </div>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel map-panel" aria-labelledby="mapTitle">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">Live Map</p>
+              <h2 id="mapTitle">Peta Rute &amp; Tracking Real-Time</h2>
+            </div>
+            <div class="map-satellite" id="satelliteText">GPS belum tersedia</div>
+          </div>
+
+          <div class="route-builder">
+            <div class="route-field">
+              <label for="originInput">Titik awal</label>
+              <div class="route-input-wrap">
+                <input id="originInput" type="search" autocomplete="off" spellcheck="false" value="Cibolang Kaler, Sukabumi" title="PT Ade Pasir · Cibolang Kaler, Cisaat, Kabupaten Sukabumi (-6.9055104, 106.8763119)" placeholder="Nama tempat, lat, lng, atau tautan Maps" />
+                <div class="route-suggestions" id="originSuggestions" hidden></div>
+              </div>
+            </div>
+            <div class="route-field">
+              <label for="destinationInput">Titik tujuan</label>
+              <div class="route-input-wrap">
+                <input id="destinationInput" type="search" autocomplete="off" spellcheck="false" value="Cibubur, Jakarta Timur" placeholder="Nama tempat, lat, lng, atau tautan Maps" />
+                <div class="route-suggestions" id="destinationSuggestions" hidden></div>
+              </div>
+            </div>
+            <button type="button" class="route-apply" id="applyRouteButton">Terapkan rute</button>
+          </div>
+          <p class="route-helper" id="routeHelper">Masukkan nama tempat, koordinat <code>lat, lng</code>, atau potongan tautan Maps; jika pencarian nama gagal, isi langsung koordinat.</p>
+
+          <div class="map-wrap">
+            <div id="leafletMap" class="leaflet-map"></div>
+            <div id="fallbackMap" class="fallback-map" hidden>
+              <svg id="routeMap" viewBox="0 0 900 520" role="img" aria-label="Peta cadangan rute pengiriman dan posisi truk secara real-time">
+                <defs>
+                  <pattern id="mapGrid" width="45" height="45" patternUnits="userSpaceOnUse">
+                    <path d="M 45 0 L 0 0 0 45" fill="none" stroke="#26363c" stroke-width="1" />
+                  </pattern>
+                </defs>
+                <rect width="900" height="520" fill="url(#mapGrid)" />
+                <g id="routeLayer"></g>
+                <g id="trailLayer"></g>
+                <g id="markerLayer"></g>
+              </svg>
+            </div>
+            <div class="map-mode" id="mapMode" data-mode="loading">Menyiapkan peta…</div>
+            <div class="traffic-status" id="trafficStatus" data-level="lancar">Lalu lintas: lancar</div>
+            <div class="map-legend">
+              <span><i class="legend-line"></i>Rute jalan</span>
+              <span><i class="legend-line traffic moderate"></i>Ramai</span>
+              <span><i class="legend-line traffic heavy"></i>Padat</span>
+              <span><i class="legend-line trail"></i>Jejak aktual</span>
+              <span><i class="legend-dot origin"></i>Titik awal</span>
+              <span><i class="legend-dot destination"></i>Titik tujuan</span>
+              <span><i class="legend-dot truck"></i>Posisi truk</span>
+            </div>
+            <div class="map-readout" id="coordinateText">Koordinat belum tersedia</div>
+          </div>
+
+          <div class="map-footer">
+            <div>
+              <span class="label">Jarak ke tujuan</span>
+              <strong id="distanceToDestination">—</strong>
+            </div>
+            <div>
+              <span class="label">Deviasi dari rute</span>
+              <strong id="routeDeviation">—</strong>
+            </div>
+            <div>
+              <span class="label">Pembacaan terakhir</span>
+              <strong id="lastSeen">—</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel instruments-panel" aria-labelledby="instrumentTitle">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker"> Kendaraan</p>
+              <h2 id="instrumentTitle">Panel Instrumen &amp; Kesehatan</h2>
+              <p class="panel-sub">Mitsubishi Fuso Canter FE 71 · Euro 4 · 4x2</p>
+            </div>
+          </div>
+
+          <div class="speed-hero">
+            <div class="speed-value">
+              <span id="speedValue">0</span>
+              <small>km/jam</small>
+            </div>
+            <div class="speed-category" id="speedCategory" data-level="stop">Berhenti</div>
+          </div>
+
+          <div class="metrics-grid">
+            <div class="metric">
+              <span class="label">Putaran mesin</span>
+              <strong><span id="rpmValue">0</span> <small>rpm</small></strong>
+            </div>
+            <div class="metric">
+              <span class="label">Odometer</span>
+              <strong><span id="odometerValue">—</span> <small>km</small></strong>
+            </div>
+            <div class="metric wide">
+              <div class="metric-top">
+                <span class="label">Sisa solar</span>
+                <strong><span id="fuelValue">—</span> <small>%</small></strong>
+              </div>
+              <div class="meter"><span id="fuelBar"></span></div>
+              <span class="metric-note"><span id="fuelLiters">—</span> liter dari tangki 70 L</span>
+            </div>
+            <div class="metric">
+              <span class="label">Suhu mesin</span>
+              <strong id="coolantValue" data-state="normal">—</strong>
+            </div>
+            <div class="metric">
+              <span class="label">Suhu oli transmisi</span>
+              <strong id="transOilValue" data-state="normal">—</strong>
+            </div>
+            <div class="metric">
+              <span class="label">Vakum rem</span>
+              <strong><span id="brakeVacuumValue">—</span> <small>kPa</small></strong>
+            </div>
+            <div class="metric">
+              <span class="label">Minyak rem</span>
+              <strong id="brakeFluidValue" data-state="unknown">—</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel payload-panel" aria-labelledby="payloadTitle">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">Anti-fraud</p>
+              <h2 id="payloadTitle">Muatan &amp; Notifikasi</h2>
+            </div>
+            <span class="gvw-limit">Batas maksimal 5.150 kg</span>
+          </div>
+
+          <div class="weight-block">
+            <div class="weight-row">
+              <div>
+                <span class="label">Estimasi berat muatan</span>
+                <strong><span id="loadValue">—</span> <small>kg</small></strong>
+              </div>
+              <div class="weight-total">
+                <span class="label">Berat total (GVW)</span>
+                <strong id="gvwValue">—</strong>
+              </div>
+            </div>
+            <div class="meter weight-meter"><span id="weightBar"></span><i class="limit-mark"></i></div>
+            <div class="weight-scale">
+              <span>Tare 2.750 kg</span>
+              <span id="weightStatus" data-state="normal">Dalam batas aman</span>
+            </div>
+          </div>
+
+          <div class="payload-columns">
+            <div class="subpanel">
+              <h3>Notifikasi peringatan</h3>
+              <div class="alert-list" id="alertList" aria-live="polite">
+                <p class="empty-state">Belum ada notifikasi. Sistem memantau enam aturan anti-fraud.</p>
+              </div>
+            </div>
+            <div class="subpanel">
+              <h3>Kamus kode DTC</h3>
+              <div class="dtc-list" id="dtcList">
+                <p class="empty-state">Tidak ada kode DTC aktif.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel control-panel" aria-labelledby="controlTitle">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">Informasi uji</p>
+              <h2 id="controlTitle">Kontrol &amp; Log Telemetri</h2>
+            </div>
+            <div class="control-buttons">
+              <button type="button" id="reconnectButton">Hubungkan ulang</button>
+              <button type="button" id="clearButton" class="secondary">Bersihkan log</button>
+            </div>
+          </div>
+
+          <div class="control-stats">
+            <div><span class="label">Status WebSocket</span><strong id="socketStatus">Terputus</strong></div>
+            <div><span class="label">Paket diterima</span><strong id="packetCount">0</strong></div>
+            <div><span class="label">Notifikasi diterima</span><strong id="alertCount">0</strong></div>
+            <div><span class="label">Sumber terakhir</span><strong id="sourceLabel">—</strong></div>
+          </div>
+
+          <div class="log" id="telemetryLog" aria-live="polite">
+            <p class="empty-state">Menunggu data telemetri dari simulator atau perangkat IoT.</p>
+          </div>
+
+          <p class="hint">Contoh uji: <code>node simulator/truck_simulator.js illegal_dump --ticks 12 --interval 1000</code></p>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
