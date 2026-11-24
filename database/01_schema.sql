@@ -205,3 +205,12 @@ SELECT
 FROM telemetry_logs tl
 JOIN vehicles v ON v.vehicle_id = tl.vehicle_id
 LEFT JOIN trips t ON t.trip_id = tl.trip_id;
+
+ALTER TABLE vehicles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE maintenance_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE dtc_dictionary ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trips ENABLE ROW LEVEL SECURITY;
+ALTER TABLE telemetry_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fraud_alerts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE active_routes ENABLE ROW LEVEL SECURITY;
+ALTER VIEW ml_telemetry_features SET (security_invoker = true);

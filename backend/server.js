@@ -16,6 +16,8 @@ const MQTT_DISABLED = process.env.MQTT_DISABLED === '1';
 const MQTT_RECONNECT = process.env.MQTT_RECONNECT === '1';
 const MAX_HISTORY = Number(process.env.MAX_HISTORY || 500);
 const MAX_BODY_BYTES = 1_000_000;
+const MAX_TRACKED_VINS = Number(process.env.MAX_TRACKED_VINS || 500);
+const API_KEY = (process.env.API_KEY || '').trim();
 const FUEL_TANK_LITERS_MAX = 200;
 const FRONTEND_DIR = path.join(__dirname, '..', 'frontend');
 const STATIC_ROUTES = new Map([
@@ -65,6 +67,7 @@ const THRESHOLDS = {
   hydraulic_dump_min_bar: 18,
   hydraulic_spike_delta_bar: 4,
   hydraulic_drop_bar: 5,
+  hydraulic_dump_window_ms: 180_000,
   illegal_dump_load_drop_kg: 300,
   illegal_dump_min_destination_m: 200,
   fuel_theft_drop_liters: 3,
@@ -434,10 +437,16 @@ function deriveMetrics(telemetry) {
 function getState(vin) {
   let state = stateByVin.get(vin);
   if (!state) {
+    if (stateByVin.size >= MAX_TRACKED_VINS) {
+      const oldestKey = stateByVin.keys().next().value;
+      if (oldestKey !== undefined) {
+        stateByVin.delete(oldestKey);
+      }
+    }
     state = {
       route_deviation_since_ms: null,
       last_hydraulic_bar: null,
-      dump: { armed: false, peak_bar: 0, load_at_peak_kg: 0 },
+      dump: { armed: false, peak_bar: 0, load_at_peak_kg: 0, armed_at_ms: null },
       fuel_samples: [],
       last_alert_at_ms: {}
     };
@@ -510,11 +519,17 @@ function evaluateRules(telemetry, metrics) {
   const hydraulicDelta = previousHydraulicBar === null ? 0 : metrics.hydraulic_bar - previousHydraulicBar;
   const dump = state.dump;
 
+  if (dump.armed && dump.armed_at_ms !== null && eventMs - dump.armed_at_ms > THRESHOLDS.hydraulic_dump_window_ms) {
+    dump.armed = false;
+    dump.armed_at_ms = null;
+  }
+
   if (
     metrics.hydraulic_bar >= THRESHOLDS.hydraulic_dump_min_bar &&
     hydraulicDelta >= THRESHOLDS.hydraulic_spike_delta_bar
   ) {
     dump.armed = true;
+    dump.armed_at_ms = eventMs;
     dump.peak_bar = metrics.hydraulic_bar;
     dump.load_at_peak_kg = metrics.estimated_load_kg;
   } else if (dump.armed && metrics.hydraulic_bar > dump.peak_bar) {
@@ -536,6 +551,7 @@ function evaluateRules(telemetry, metrics) {
       });
     }
     dump.armed = false;
+    dump.armed_at_ms = null;
   }
   state.last_hydraulic_bar = metrics.hydraulic_bar;
 
@@ -554,8 +570,8 @@ function evaluateRules(telemetry, metrics) {
       (sample) => sample.is_stationary && sample !== currentFuelSample
     );
     if (previousStationarySamples.length >= 1) {
-      const minimumLiters = Math.min(...previousStationarySamples.map((sample) => sample.fuel_level_liters));
-      const fuelDropLiters = round(minimumLiters - metrics.fuel_level_liters, 2);
+      const maximumLiters = Math.max(...previousStationarySamples.map((sample) => sample.fuel_level_liters));
+      const fuelDropLiters = round(maximumLiters - metrics.fuel_level_liters, 2);
       if (fuelDropLiters > THRESHOLDS.fuel_theft_drop_liters) {
         emit('FUEL_THEFT', fuelDropLiters, THRESHOLDS.fuel_theft_drop_liters, {
           fuel_drop_liters: fuelDropLiters,
@@ -691,10 +707,25 @@ function parseLimit(value) {
   return Math.min(Math.floor(parsed), 200);
 }
 
+function checkApiKey(request) {
+  if (!API_KEY) {
+    return;
+  }
+  const headerKey = request.headers['x-api-key'];
+  const authHeader = request.headers.authorization || '';
+  const bearerKey = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (headerKey === API_KEY || bearerKey === API_KEY) {
+    return;
+  }
+  const error = new Error('API key tidak valid atau tidak disertakan.');
+  error.status = 401;
+  throw error;
+}
+
 async function handleRequest(request, response) {
   response.setHeader('Access-Control-Allow-Origin', '*');
   response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key, Authorization');
 
   if (request.method === 'OPTIONS') {
     response.writeHead(204);
@@ -754,6 +785,7 @@ async function handleRequest(request, response) {
     }
 
     if (request.method === 'POST' && url.pathname === '/api/v1/route') {
+      checkApiKey(request);
       const payload = await readJsonBody(request);
       const route = await applyRoute(normalizeRoutePayload(payload));
       sendJson(response, 200, { status: 'ok', route });
@@ -761,6 +793,7 @@ async function handleRequest(request, response) {
     }
 
     if (request.method === 'POST' && url.pathname === '/api/v1/telemetry') {
+      checkApiKey(request);
       const payload = await readJsonBody(request);
       const result = await processTelemetry(payload, 'http');
       sendJson(response, 200, { status: 'ok', ...result });

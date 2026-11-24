@@ -1,8 +1,12 @@
 'use strict';
 
 const params = new URLSearchParams(window.location.search);
-const WS_URL = params.get('ws') || 'ws://127.0.0.1:3000/ws';
-const REST_BASE = params.get('api') || 'http://127.0.0.1:3000';
+const DEFAULT_HTTP_ORIGIN = window.location.protocol.startsWith('http')
+  ? window.location.origin
+  : 'http://127.0.0.1:3000';
+const DEFAULT_WS_ORIGIN = DEFAULT_HTTP_ORIGIN.replace(/^http/i, 'ws');
+const WS_URL = params.get('ws') || `${DEFAULT_WS_ORIGIN}/ws`;
+const REST_BASE = params.get('api') || DEFAULT_HTTP_ORIGIN;
 
 const GVW_LIMIT_KG = 5150;
 const TARE_WEIGHT_KG = 2750;
@@ -642,6 +646,11 @@ function focusLeafletTruck(point) {
   leafletMap.setView([point.lat, point.lng], leafletMap.getZoom(), { animate: false });
 }
 
+function getCurrentTruckRotation() {
+  const heading = toNumber(latestTelemetry?.gps?.heading_deg ?? latestTelemetry?.heading_deg);
+  return heading !== null ? heading : 0;
+}
+
 function renderLeafletMap() {
   if (!leafletMap || !leafletLayers.trail || !leafletLayers.truck) {
     return;
@@ -663,7 +672,7 @@ function renderLeafletMap() {
     .setLatLng([current.lat, current.lng])
     .setOpacity(1)
     .setTooltipContent(`Truk Canter FE 71 · ${formatCoordinate(current)}`);
-  setLeafletTruckRotation(0);
+  setLeafletTruckRotation(getCurrentTruckRotation());
   focusLeafletTruck(current);
 }
 
@@ -749,7 +758,7 @@ function renderFallbackMap() {
     return;
   }
 
-  appendFallbackTruck(current, 0, 'Truk Canter FE 71', formatCoordinate(current));
+  appendFallbackTruck(current, getCurrentTruckRotation(), 'Truk Canter FE 71', formatCoordinate(current));
 }
 
 function renderMap() {

@@ -110,19 +110,21 @@ let initialized = false;
 
 function noteDatabaseFailure(error) {
   lastError = error && error.message ? error.message : String(error);
-  if (mode === 'postgres') {
-    console.warn(`Database tidak tersedia, memakai fallback memori: ${lastError}`);
+  console.warn(`Operasi database gagal, memakai fallback memori sementara: ${lastError}`);
+  if (!pool) {
+    mode = 'memory';
   }
-  mode = 'memory';
 }
 
 async function withClient(callback) {
-  if (mode !== 'postgres' || !pool) {
+  if (!pool || DB_MODE === 'memory') {
     return null;
   }
   const client = await pool.connect();
   try {
-    return await callback(client);
+    const result = await callback(client);
+    mode = 'postgres';
+    return result;
   } finally {
     client.release();
   }
@@ -202,6 +204,8 @@ async function init() {
   return getStatus();
 }
 
+const AUTO_REGISTER_VEHICLES = process.env.AUTO_REGISTER_VEHICLES !== '0';
+
 async function resolveEntityIds(client, vin, tripCode) {
   const cacheKey = `${vin}|${tripCode || ''}`;
   if (entityCache.has(cacheKey)) {
@@ -211,25 +215,29 @@ async function resolveEntityIds(client, vin, tripCode) {
   const vehicleResult = await client.query('SELECT vehicle_id FROM vehicles WHERE vin = $1 LIMIT 1', [vin]);
   let vehicleId = vehicleResult.rows[0] ? Number(vehicleResult.rows[0].vehicle_id) : null;
 
-  if (!vehicleId) {
-    await client.query(`
-      INSERT INTO vehicles (
-        vin, vehicle_code, model_name, model_year, emission_standard,
-        drivetrain, engine_code, transmission_code, is_active
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
-      ON CONFLICT (vin) DO NOTHING
-    `, [
-      vin,
-      `IOT-${vin}`,
-      'Canter FE 71 · perangkat IoT',
-      2022,
-      'Euro 4',
-      '4x2',
-      'UNKNOWN',
-      'UNKNOWN'
-    ]);
-    const inserted = await client.query('SELECT vehicle_id FROM vehicles WHERE vin = $1 LIMIT 1', [vin]);
-    vehicleId = inserted.rows[0] ? Number(inserted.rows[0].vehicle_id) : null;
+  if (!vehicleId && AUTO_REGISTER_VEHICLES && /^[A-Za-z0-9_-]{3,32}$/.test(vin)) {
+    const countResult = await client.query('SELECT count(*) AS total FROM vehicles');
+    const totalVehicles = Number(countResult.rows[0]?.total || 0);
+    if (totalVehicles < 100) {
+      await client.query(`
+        INSERT INTO vehicles (
+          vin, vehicle_code, model_name, model_year, emission_standard,
+          drivetrain, engine_code, transmission_code, is_active
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
+        ON CONFLICT (vin) DO NOTHING
+      `, [
+        vin,
+        `IOT-${vin}`.slice(0, 32),
+        'Canter FE 71 · perangkat IoT',
+        2022,
+        'Euro 4',
+        '4x2',
+        'UNKNOWN',
+        'UNKNOWN'
+      ]);
+      const inserted = await client.query('SELECT vehicle_id FROM vehicles WHERE vin = $1 LIMIT 1', [vin]);
+      vehicleId = inserted.rows[0] ? Number(inserted.rows[0].vehicle_id) : null;
+    }
   }
 
   let tripId = null;
